@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { equatorialToHorizontal, getDailyBehavior, localSiderealDegrees } from './astronomy'
+import { equatorialToHorizontal, getDailyBehavior, localSiderealDegrees, STARS } from './astronomy'
 
 describe('celestial coordinate model', () => {
+  it('provides an expanded catalog with unique IDs and valid coordinates', () => {
+    expect(STARS.length).toBeGreaterThanOrEqual(50)
+    expect(new Set(STARS.map((star) => star.id)).size).toBe(STARS.length)
+
+    for (const star of STARS) {
+      expect(star.ra).toBeGreaterThanOrEqual(0)
+      expect(star.ra).toBeLessThan(360)
+      expect(star.dec).toBeGreaterThanOrEqual(-90)
+      expect(star.dec).toBeLessThanOrEqual(90)
+    }
+  })
+
   it('places a star on the meridian at its local sidereal transit', () => {
     const date = new Date('2026-10-07T21:00:00.000Z')
     const rightAscension = localSiderealDegrees(date)
