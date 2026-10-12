@@ -226,7 +226,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .about-dialog p:not(.eyebrow) { max-width: 340px; margin: 0 0 12px; color: #5f7168; font: 15px/1.5 var(--serif); }
 .dialog-footnote { display: block; margin-top: 20px; color: var(--coral); font: 8px var(--mono); letter-spacing: .55px; text-transform: uppercase; }
 .intro-row { display: flex; align-items: end; justify-content: space-between; padding: 33px 0 25px; }
-.eyebrow, .lesson-index, .timeline-label, .scene-location, .scene-coordinates, .scene-legend, .scene-reset, .sphere-caption, .scene-inset, .range-ticks, .control-label, .latitude-readout > span, .data-grid > div > span, .page-footer, .section-heading > span, .lesson-number { font-family: var(--mono); }
+.eyebrow, .lesson-index, .timeline-label, .scene-location, .scene-coordinates, .scene-legend, .scene-reset, .sphere-caption, .range-ticks, .control-label, .latitude-readout > span, .data-grid > div > span, .page-footer, .section-heading > span, .lesson-number { font-family: var(--mono); }
 .eyebrow { margin: 0 0 7px; color: var(--coral); font-size: 9px; letter-spacing: 1.05px; }
 .eyebrow span { color: #abb5ac; padding: 0 4px; }
 h1, h2, h3, p { margin-top: 0; }
@@ -234,7 +234,7 @@ h1 { margin: 0; color: var(--ink); font: 500 42px/.98 var(--serif); letter-spaci
 .intro-note { max-width: 242px; margin: 0 0 2px; color: #697a72; font: 400 15px/1.4 var(--serif); }
 
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 318px; align-items: stretch; border: 1px solid #d9dfd7; background: var(--panel); }
-.observatory { min-width: 0; display: grid; grid-template-rows: 43px minmax(330px, 1fr) 43px 100px; color: #e7eee7; background: #142f30; }
+.observatory { min-width: 0; display: grid; grid-template-rows: 43px minmax(330px, 1fr) auto 100px; color: #e7eee7; background: #142f30; }
 .scene-header, .scene-footer { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; }
 .scene-header { border-bottom: 1px solid rgb(216 238 224 / 12%); }
 .scene-location { display: flex; align-items: center; gap: 8px; color: #b7cbc0; font-size: 9px; letter-spacing: .65px; }
@@ -246,17 +246,17 @@ h1 { margin: 0; color: var(--ink); font: 500 42px/.98 var(--serif); letter-spaci
 .sphere-wrap::before { position: absolute; z-index: 1; inset: 0; content: ''; pointer-events: none; background: linear-gradient(90deg, rgb(14 37 38 / 18%), transparent 19%, transparent 82%, rgb(14 37 38 / 24%)); }
 .sphere-canvas { position: absolute; inset: 0; touch-action: none; }
 .sphere-canvas canvas { display: block; width: 100%; height: 100%; }
+.pole-position-label { position: absolute; z-index: 3; display: flex; flex-direction: column; gap: 3px; color: #e3eee7; font: 7px/1.2 var(--mono); letter-spacing: .15px; white-space: nowrap; text-shadow: 0 1px 4px #102829; pointer-events: none; visibility: hidden; }
+.pole-position-label b { color: #e8c88f; font-size: 6px; font-weight: 400; }
 .sphere-caption { position: absolute; z-index: 2; color: rgb(224 237 227 / 55%); font-size: 8px; letter-spacing: .9px; pointer-events: none; }
 .sphere-caption-north { top: 16px; left: 50%; display: flex; align-items: center; gap: 7px; transform: translateX(-50%); }
 .caption-rule { width: 1px; height: 16px; background: rgb(211 231 219 / 45%); }
 .sphere-caption-horizon { bottom: 19px; left: 50%; display: flex; gap: 6px; transform: translateX(-50%); }
 .sphere-caption-horizon span { color: #e4bd7a; }
-.scene-inset { position: absolute; z-index: 2; top: 19px; right: 20px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; color: #b3c9be; font-size: 8px; letter-spacing: .35px; pointer-events: none; }
-.scene-inset b { padding-left: 10px; color: #e8c88f; font-size: 7px; font-weight: 400; }
-.inset-dot { width: 5px; height: 5px; margin-bottom: -11px; margin-left: -10px; background: #91ccbb; box-shadow: 0 0 8px #91ccbb; }
-.scene-footer { border-top: 1px solid rgb(216 238 224 / 12%); }
-.scene-legend { display: flex; align-items: center; gap: 7px; color: #a8bcb2; font-size: 8px; letter-spacing: .35px; }
+.scene-footer { min-height: 43px; padding-block: 5px; border-top: 1px solid rgb(216 238 224 / 12%); }
+.scene-legend { min-width: 0; display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 7px; color: #a8bcb2; font-size: 8px; letter-spacing: .35px; }
 .legend-star { width: 6px; height: 6px; border-radius: 50%; background: #f2d8a5; box-shadow: 0 0 7px rgb(242 216 165 / 60%); }
+.legend-circumpolar { width: 11px; height: 7px; border: 1px solid #e5b879; border-radius: 50%; background: rgb(229 184 121 / 20%); }
 .legend-equator { width: 15px; height: 1px; margin-left: 8px; background: var(--gold); }
 .scene-reset { display: flex; align-items: center; gap: 6px; border: 0; padding: 7px 0 7px 10px; color: #bacbc1; background: transparent; font-size: 8px; letter-spacing: .4px; cursor: pointer; }
 .scene-reset:hover { color: #fff4d9; }
@@ -342,7 +342,7 @@ h1 { margin: 0; color: var(--ink); font: 500 42px/.98 var(--serif); letter-spaci
   .app-shell { padding-inline: 28px; }
   .workspace { grid-template-columns: minmax(0, 1fr) 286px; }
   .inspector-section { padding-inline: 16px; }
-  .observatory { grid-template-rows: 43px minmax(300px, 1fr) 43px 100px; }
+  .observatory { grid-template-rows: 43px minmax(300px, 1fr) auto 100px; }
   .transport { gap: 10px; padding-inline: 14px; }
   .speed-control { flex-direction: column; }
   .lesson-lead, .lesson-item { padding-right: 12px; }
@@ -357,9 +357,10 @@ h1 { margin: 0; color: var(--ink); font: 500 42px/.98 var(--serif); letter-spaci
   h1 { font-size: 38px; }
   .intro-note { max-width: 330px; font-size: 14px; }
   .workspace { grid-template-columns: 1fr; }
-  .observatory { grid-template-rows: 40px clamp(280px, 76vw, 410px) 39px auto; }
+  .observatory { grid-template-rows: 40px clamp(280px, 76vw, 410px) auto auto; }
   .scene-header, .scene-footer { padding-inline: 13px; }
-  .scene-inset { top: 12px; right: 12px; }
+  .scene-footer { min-height: 39px; }
+  .scene-legend { column-gap: 5px; }
   .transport { min-height: 92px; flex-wrap: wrap; gap: 9px; padding: 12px 13px; }
   .play-button { width: 34px; height: 34px; }
   .timeline { flex-basis: calc(100% - 48px); }
