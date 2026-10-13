@@ -36,6 +36,8 @@ interface SphereScene {
   meridian: THREE.Line
   zenithMarker: THREE.Mesh
   nadirMarker: THREE.Mesh
+  circumpolarRegion: THREE.Mesh
+  circumpolarBoundary: THREE.LineLoop
   animationFrame: number
 }
 
@@ -136,6 +138,72 @@ function makeVerticalMarker(color: number, elevation: number) {
   return marker
 }
 
+function makeCircumpolarRegion() {
+  const region = new THREE.Mesh(
+    new THREE.BufferGeometry(),
+    new THREE.MeshBasicMaterial({
+      color: 0xe5b879,
+      transparent: true,
+      opacity: 0.055,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    }),
+  )
+  const boundary = new THREE.LineLoop(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0xf0c989, transparent: true, opacity: 0.58, depthWrite: false }),
+  )
+  region.renderOrder = 1
+  boundary.renderOrder = 2
+  return { region, boundary }
+}
+
+function updateCircumpolarRegion(region: THREE.Mesh, boundary: THREE.LineLoop, date: Date, latitude: number) {
+  if (latitude === 0) {
+    region.visible = false
+    boundary.visible = false
+    return
+  }
+
+  const hemisphere = Math.sign(latitude)
+  const boundaryDeclination = hemisphere * (90 - Math.abs(latitude))
+  const steps = 96
+  const ring = Array.from({ length: steps }, (_, index) => (
+    toHorizonVector(index / steps * 360, boundaryDeclination, date, latitude, 1)
+  ))
+  const pole = toHorizonVector(0, hemisphere * 90, date, latitude, 1)
+  const trianglePositions: number[] = []
+  const radialSteps = 8
+  const surfaceRings = Array.from({ length: radialSteps + 1 }, (_, radialIndex) => (
+    ring.map((edgePoint) => pole.clone().lerp(edgePoint, radialIndex / radialSteps).normalize().multiplyScalar(RADIUS * 1.004))
+  ))
+  for (let radialIndex = 0; radialIndex < radialSteps; radialIndex += 1) {
+    const innerRing = surfaceRings[radialIndex]
+    const outerRing = surfaceRings[radialIndex + 1]
+    for (let index = 0; index < steps; index += 1) {
+      const next = (index + 1) % steps
+      trianglePositions.push(
+        ...innerRing[index].toArray(),
+        ...outerRing[index].toArray(),
+        ...outerRing[next].toArray(),
+        ...innerRing[index].toArray(),
+        ...outerRing[next].toArray(),
+        ...innerRing[next].toArray(),
+      )
+    }
+  }
+
+  region.geometry.dispose()
+  region.geometry = new THREE.BufferGeometry()
+  region.geometry.setAttribute('position', new THREE.Float32BufferAttribute(trianglePositions, 3))
+  region.geometry.computeBoundingSphere()
+  boundary.geometry.dispose()
+  boundary.geometry = new THREE.BufferGeometry().setFromPoints(ring.map((point) => point.clone().multiplyScalar(RADIUS * 1.004)))
+  boundary.geometry.computeBoundingSphere()
+  region.visible = true
+  boundary.visible = true
+}
+
 export function SphereView({
   date,
   latitude,
@@ -151,10 +219,12 @@ export function SphereView({
   const containerRef = useRef<HTMLDivElement>(null)
   const coordinateLabelRefs = useRef<(HTMLSpanElement | null)[]>([])
   const sphereReferenceLabelRefs = useRef<(HTMLSpanElement | null)[]>([])
+  const poleLabelRef = useRef<HTMLSpanElement>(null)
   const sceneRef = useRef<SphereScene | null>(null)
   const selectRef = useRef(onSelectStar)
   const showCoordinatesRef = useRef(showCoordinates)
   const showSphereReferencesRef = useRef(showSphereReferences)
+  const latitudeRef = useRef(latitude)
 
   useEffect(() => { selectRef.current = onSelectStar }, [onSelectStar])
 
@@ -209,6 +279,8 @@ export function SphereView({
     const zenithMarker = makeVerticalMarker(0xf2c879, 1)
     const nadirMarker = makeVerticalMarker(0x9fc9e9, -1)
     scene.add(meridian, zenithMarker, nadirMarker)
+    const { region: circumpolarRegion, boundary: circumpolarBoundary } = makeCircumpolarRegion()
+    scene.add(circumpolarRegion, circumpolarBoundary)
 
     const constellations = lineSegments([], 0xe3bb7b, 0.72)
     scene.add(constellations)
@@ -250,6 +322,7 @@ export function SphereView({
       new THREE.PointsMaterial({ color: 0xa3c4bd, size: 0.025, transparent: true, opacity: 0.38, sizeAttenuation: true, depthWrite: false }),
     ))
 
+    const poleLabel = poleLabelRef.current
     const resize = () => {
       const { width, height } = container.getBoundingClientRect()
       if (!width || !height) return
@@ -288,6 +361,7 @@ export function SphereView({
       renderer, controls, starMeshes, halo, equator, pole, grid, constellations,
       coordinateArcs, coordinateAnchors, animationFrame: 0,
       meridian, zenithMarker, nadirMarker,
+      circumpolarRegion, circumpolarBoundary,
     }
     sceneRef.current = elements
     const draw = () => {
@@ -350,6 +424,25 @@ export function SphereView({
         label.style.visibility = showSphereReferencesRef.current && visible && anchor.z < 1 ? 'visible' : 'hidden'
         label.style.left = `${Math.max(4, Math.min(container.clientWidth - label.offsetWidth - 4, x + 8))}px`
         label.style.top = `${Math.max(4, Math.min(container.clientHeight - label.offsetHeight - 4, y - label.offsetHeight / 2))}px`
+        }
+      if (poleLabel) {
+        const currentLatitude = latitudeRef.current
+        const polePosition = new THREE.Vector3(
+          0,
+          Math.sin(THREE.MathUtils.degToRad(currentLatitude)) * RADIUS * 1.018,
+          Math.cos(THREE.MathUtils.degToRad(currentLatitude)) * RADIUS * 1.018,
+        ).project(camera)
+        const width = container.clientWidth
+        const height = container.clientHeight
+        const labelWidth = poleLabel.offsetWidth
+        const labelHeight = poleLabel.offsetHeight
+        const poleX = (polePosition.x + 1) * width / 2
+        const poleY = (1 - polePosition.y) * height / 2
+        const labelX = poleX + labelWidth + 12 < width ? poleX + 12 : poleX - labelWidth - 12
+        const labelY = Math.max(4, Math.min(height - labelHeight - 4, poleY - labelHeight / 2))
+        poleLabel.style.visibility = polePosition.z < 1 ? 'visible' : 'hidden'
+        poleLabel.style.left = `${labelX}px`
+        poleLabel.style.top = `${labelY}px`
       }
       elements.animationFrame = window.requestAnimationFrame(draw)
     }
@@ -377,6 +470,7 @@ export function SphereView({
   useEffect(() => {
     showCoordinatesRef.current = showCoordinates
     showSphereReferencesRef.current = showSphereReferences
+    latitudeRef.current = latitude
     const elements = sceneRef.current
     if (!elements) return
 
@@ -394,7 +488,6 @@ export function SphereView({
     polePositions.needsUpdate = true
     elements.pole.geometry.computeBoundingSphere()
     elements.pole.computeLineDistances()
-
     const starPositions = new Map<string, THREE.Vector3>()
     for (const star of STARS) {
       const horizontal = equatorialToHorizontal(star.ra, star.dec, date, latitude)
@@ -423,6 +516,7 @@ export function SphereView({
         elements.coordinateArcs[coordinateName].visible = showCoordinates
       }
     }
+    updateCircumpolarRegion(elements.circumpolarRegion, elements.circumpolarBoundary, date, latitude)
 
     const segments: number[] = []
     for (const [firstId, secondId] of constellationPairs) {
@@ -446,9 +540,10 @@ export function SphereView({
     `RIGHT ASCENSION ${(selectedStar.ra / 15).toFixed(2)}h · VERNAL EQUINOX`,
     `DECLINATION ${selectedStar.dec > 0 ? '+' : ''}${selectedStar.dec.toFixed(1)}° · CELESTIAL EQUATOR`,
   ]
+  const circumpolarPole = latitude === 0 ? 'no circumpolar region at the equator' : `${latitude > 0 ? 'north' : 'south'} circumpolar sky region highlighted`
 
   return (
-    <div ref={containerRef} className="sphere-canvas" role="img" aria-label="Interactive celestial sphere showing bright stars, horizon, altitude grid, celestial equator, and north celestial pole">
+    <div ref={containerRef} className="sphere-canvas" role="img" aria-label={`Interactive celestial sphere showing bright stars, horizon, altitude grid, celestial equator, and ${circumpolarPole}`}>
       {coordinateLabels.map((label, index) => (
         <span
           key={COORDINATE_NAMES[index]}
@@ -465,6 +560,10 @@ export function SphereView({
           aria-hidden="true"
         >{referenceName === 'meridian' ? 'LOCAL MERIDIAN' : referenceName.toUpperCase()}</span>
       ))}
+      <span ref={poleLabelRef} className="pole-position-label" aria-hidden="true">
+        <span>NORTH CELESTIAL POLE</span>
+        <b>{latitude === 0 ? 'FIXED · ON HORIZON' : `FIXED · ${Math.abs(latitude)}° ${latitude > 0 ? 'ABOVE' : 'BELOW'} HORIZON`}</b>
+      </span>
     </div>
   )
 }
