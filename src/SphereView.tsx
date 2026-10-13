@@ -6,6 +6,7 @@ import { equatorialToHorizontal, getCoordinatePaths, STARS } from './astronomy'
 const RADIUS = 3.2
 const EQUATOR_POINTS = 160
 const COORDINATE_NAMES = ['altitude', 'rightAscension', 'declination'] as const
+const SPHERE_REFERENCE_NAMES = ['zenith', 'nadir', 'meridian'] as const
 type CoordinateName = typeof COORDINATE_NAMES[number]
 
 interface SphereViewProps {
@@ -15,6 +16,7 @@ interface SphereViewProps {
   showGrid: boolean
   showConstellations: boolean
   showCoordinates: boolean
+  showSphereReferences: boolean
   constellationPairs: string[][]
   resetToken: number
   onSelectStar: (id: string) => void
@@ -31,6 +33,9 @@ interface SphereScene {
   constellations: THREE.LineSegments
   coordinateArcs: Record<CoordinateName, THREE.Line>
   coordinateAnchors: Record<CoordinateName, THREE.Vector3>
+  meridian: THREE.Line
+  zenithMarker: THREE.Mesh
+  nadirMarker: THREE.Mesh
   animationFrame: number
 }
 
@@ -110,6 +115,27 @@ function updateCoordinateArc(line: THREE.Line, directions: { east: number; up: n
   if (line.material instanceof THREE.LineDashedMaterial) line.computeLineDistances()
 }
 
+function makeLocalMeridian() {
+  const points = Array.from({ length: 181 }, (_, index) => {
+    const angle = index / 180 * Math.PI * 2
+    return new THREE.Vector3(0, Math.sin(angle), Math.cos(angle)).multiplyScalar(RADIUS * 1.006)
+  })
+  return new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(points),
+    new THREE.LineBasicMaterial({ color: 0xb9a4d6, transparent: true, opacity: 0.82, depthWrite: false }),
+  )
+}
+
+function makeVerticalMarker(color: number, elevation: number) {
+  const marker = new THREE.Mesh(
+    new THREE.SphereGeometry(0.045, 12, 10),
+    new THREE.MeshBasicMaterial({ color, depthWrite: false }),
+  )
+  marker.position.set(0, elevation * RADIUS * 1.012, 0)
+  marker.renderOrder = 4
+  return marker
+}
+
 export function SphereView({
   date,
   latitude,
@@ -117,15 +143,18 @@ export function SphereView({
   showGrid,
   showConstellations,
   showCoordinates,
+  showSphereReferences,
   constellationPairs,
   resetToken,
   onSelectStar,
 }: SphereViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const coordinateLabelRefs = useRef<(HTMLSpanElement | null)[]>([])
+  const sphereReferenceLabelRefs = useRef<(HTMLSpanElement | null)[]>([])
   const sceneRef = useRef<SphereScene | null>(null)
   const selectRef = useRef(onSelectStar)
   const showCoordinatesRef = useRef(showCoordinates)
+  const showSphereReferencesRef = useRef(showSphereReferences)
 
   useEffect(() => { selectRef.current = onSelectStar }, [onSelectStar])
 
@@ -175,6 +204,11 @@ export function SphereView({
       new THREE.LineDashedMaterial({ color: 0x9bd5c6, dashSize: 0.12, gapSize: 0.08, transparent: true, opacity: 0.76 }),
     )
     scene.add(pole)
+
+    const meridian = makeLocalMeridian()
+    const zenithMarker = makeVerticalMarker(0xf2c879, 1)
+    const nadirMarker = makeVerticalMarker(0x9fc9e9, -1)
+    scene.add(meridian, zenithMarker, nadirMarker)
 
     const constellations = lineSegments([], 0xe3bb7b, 0.72)
     scene.add(constellations)
@@ -244,6 +278,7 @@ export function SphereView({
     renderer.domElement.addEventListener('pointerup', handlePointerUp)
 
     const coordinateLabels = coordinateLabelRefs.current
+    const sphereReferenceLabels = sphereReferenceLabelRefs.current
     const coordinateAnchors = {
       altitude: new THREE.Vector3(),
       rightAscension: new THREE.Vector3(),
@@ -252,6 +287,7 @@ export function SphereView({
     const elements: SphereScene = {
       renderer, controls, starMeshes, halo, equator, pole, grid, constellations,
       coordinateArcs, coordinateAnchors, animationFrame: 0,
+      meridian, zenithMarker, nadirMarker,
     }
     sceneRef.current = elements
     const draw = () => {
@@ -284,6 +320,37 @@ export function SphereView({
         label.style.left = `${Math.max(4, Math.min(container.clientWidth - label.offsetWidth - 4, x + 8))}px`
         label.style.top = `${Math.max(4, Math.min(container.clientHeight - label.offsetHeight - 4, y - label.offsetHeight / 2))}px`
       }
+      for (let index = 0; index < SPHERE_REFERENCE_NAMES.length; index += 1) {
+        const label = sphereReferenceLabels[index]
+        if (!label) continue
+        const referenceName = SPHERE_REFERENCE_NAMES[index]
+        let anchor: THREE.Vector3
+        let visible = true
+        if (referenceName === 'zenith') {
+          anchor = new THREE.Vector3(0, RADIUS * 1.012, 0).project(camera)
+        } else if (referenceName === 'nadir') {
+          anchor = new THREE.Vector3(0, -RADIUS * 1.012, 0).project(camera)
+        } else {
+          const positionAttribute = meridian.geometry.getAttribute('position')
+          let nearestVisibleDistance = Number.POSITIVE_INFINITY
+          anchor = new THREE.Vector3()
+          for (let pointIndex = 0; pointIndex < positionAttribute.count; pointIndex += 1) {
+            const candidate = new THREE.Vector3().fromBufferAttribute(positionAttribute, pointIndex).project(camera)
+            if (candidate.z < -1 || candidate.z > 1 || Math.abs(candidate.x) > 1 || Math.abs(candidate.y) > 1) continue
+            const distance = candidate.x ** 2 + candidate.y ** 2
+            if (distance < nearestVisibleDistance) {
+              anchor = candidate
+              nearestVisibleDistance = distance
+            }
+          }
+          visible = nearestVisibleDistance < Number.POSITIVE_INFINITY
+        }
+        const x = (anchor.x + 1) * container.clientWidth / 2
+        const y = (1 - anchor.y) * container.clientHeight / 2
+        label.style.visibility = showSphereReferencesRef.current && visible && anchor.z < 1 ? 'visible' : 'hidden'
+        label.style.left = `${Math.max(4, Math.min(container.clientWidth - label.offsetWidth - 4, x + 8))}px`
+        label.style.top = `${Math.max(4, Math.min(container.clientHeight - label.offsetHeight - 4, y - label.offsetHeight / 2))}px`
+      }
       elements.animationFrame = window.requestAnimationFrame(draw)
     }
     draw()
@@ -309,6 +376,7 @@ export function SphereView({
 
   useEffect(() => {
     showCoordinatesRef.current = showCoordinates
+    showSphereReferencesRef.current = showSphereReferences
     const elements = sceneRef.current
     if (!elements) return
 
@@ -341,6 +409,9 @@ export function SphereView({
     elements.halo.position.copy(starPositions.get(selectedStarId) ?? new THREE.Vector3())
     elements.halo.lookAt(0, 0, 0)
     elements.grid.visible = showGrid
+    elements.meridian.visible = showSphereReferences
+    elements.zenithMarker.visible = showSphereReferences
+    elements.nadirMarker.visible = showSphereReferences
     const selectedStar = STARS.find((star) => star.id === selectedStarId)
     if (selectedStar) {
       const paths = getCoordinatePaths(selectedStar.ra, selectedStar.dec, date, latitude)
@@ -364,7 +435,7 @@ export function SphereView({
     elements.constellations.geometry.dispose()
     elements.constellations.geometry = geometry
     elements.constellations.visible = showConstellations
-  }, [date, latitude, selectedStarId, showGrid, showConstellations, showCoordinates, constellationPairs])
+  }, [date, latitude, selectedStarId, showGrid, showConstellations, showCoordinates, showSphereReferences, constellationPairs])
 
   useEffect(() => { sceneRef.current?.controls.reset() }, [resetToken])
 
@@ -385,6 +456,14 @@ export function SphereView({
           className={`coordinate-callout coordinate-callout-${COORDINATE_NAMES[index]}`}
           aria-hidden="true"
         >{label}</span>
+      ))}
+      {SPHERE_REFERENCE_NAMES.map((referenceName, index) => (
+        <span
+          key={referenceName}
+          ref={(element) => { sphereReferenceLabelRefs.current[index] = element }}
+          className={`sphere-reference-label sphere-reference-label-${referenceName}`}
+          aria-hidden="true"
+        >{referenceName === 'meridian' ? 'LOCAL MERIDIAN' : referenceName.toUpperCase()}</span>
       ))}
     </div>
   )

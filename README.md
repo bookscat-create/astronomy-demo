@@ -18,6 +18,7 @@ Vite prints the local URL. Use `npm run build` to create the production build, `
 - Change observer latitude to see the celestial pole and star paths shift relative to the horizon.
 - Toggle the altitude/azimuth grid and the Summer Triangle asterism.
 - Toggle selected-star coordinate guides to see altitude from the horizon, right ascension from the vernal equinox, and declination from the celestial equator.
+- Toggle local sky references to show or hide the labeled zenith, nadir, and north-south meridian together.
 
 ## Model
 

@@ -250,6 +250,10 @@ h1 { margin: 0; color: var(--ink); font: 500 42px/.98 var(--serif); letter-spaci
 .coordinate-callout-altitude { border-left: 2px solid #f28e78; }
 .coordinate-callout-rightAscension { border-left: 2px dashed #f1c56f; }
 .coordinate-callout-declination { border-left: 2px solid #79d7c5; }
+.sphere-reference-label { position: absolute; z-index: 3; padding: 3px 4px; color: #edf0e9; background: rgb(16 40 41 / 84%); font: 8px/1.2 var(--mono); white-space: nowrap; text-shadow: 0 1px 2px #102829; pointer-events: none; visibility: hidden; }
+.sphere-reference-label-zenith { border-left: 2px solid #f2c879; }
+.sphere-reference-label-nadir { border-left: 2px solid #9fc9e9; }
+.sphere-reference-label-meridian { border-left: 2px solid #b9a4d6; }
 .sphere-caption { position: absolute; z-index: 2; color: rgb(224 237 227 / 55%); font-size: 8px; letter-spacing: .9px; pointer-events: none; }
 .sphere-caption-north { top: 16px; left: 50%; display: flex; align-items: center; gap: 7px; transform: translateX(-50%); }
 .caption-rule { width: 1px; height: 16px; background: rgb(211 231 219 / 45%); }

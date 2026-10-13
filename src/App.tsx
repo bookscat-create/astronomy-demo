@@ -28,6 +28,7 @@ function App() {
   const [showGrid, setShowGrid] = useState(true)
   const [showConstellations, setShowConstellations] = useState(false)
   const [showCoordinates, setShowCoordinates] = useState(true)
+  const [showSphereReferences, setShowSphereReferences] = useState(true)
   const [viewRevision, setViewRevision] = useState(0)
   const [showAbout, setShowAbout] = useState(false)
 
@@ -78,7 +79,7 @@ function App() {
         <div className="observatory">
           <div className="scene-header"><div className="scene-location"><span className="live-dot" /> LOCAL SKY <b>{formatLatitude(latitude)}</b></div><div className="scene-coordinates"><span>N</span><span className="coordinate-line" /><span>E</span></div></div>
           <div className="sphere-wrap">
-            <SphereView date={observationDate} latitude={latitude} selectedStarId={selectedStarId} showGrid={showGrid} showConstellations={showConstellations} showCoordinates={showCoordinates} constellationPairs={CONSTELLATION_PAIRS} resetToken={viewRevision} onSelectStar={setSelectedStarId} />
+            <SphereView date={observationDate} latitude={latitude} selectedStarId={selectedStarId} showGrid={showGrid} showConstellations={showConstellations} showCoordinates={showCoordinates} showSphereReferences={showSphereReferences} constellationPairs={CONSTELLATION_PAIRS} resetToken={viewRevision} onSelectStar={setSelectedStarId} />
             <div className="sphere-caption sphere-caption-north"><span className="caption-rule" /> NORTH</div>
             <div className="sphere-caption sphere-caption-horizon">HORIZON <span>0°</span></div>
             <div className="scene-inset"><span className="inset-dot" /> CELESTIAL NORTH POLE <b>{Math.abs(latitude)}° {latitude < 0 ? 'BELOW' : 'ABOVE'} HORIZON</b></div>
@@ -112,6 +113,7 @@ function App() {
             <label className="toggle-row"><span className="toggle-copy"><span>Altitude grid</span><small>Horizon coordinates</small></span><input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} /><span className="toggle-switch" aria-hidden="true" /></label>
             <label className="toggle-row"><span className="toggle-copy"><span>Star pattern</span><small>Summer Triangle</small></span><input type="checkbox" checked={showConstellations} onChange={(event) => setShowConstellations(event.target.checked)} /><span className="toggle-switch" aria-hidden="true" /></label>
             <label className="toggle-row"><span className="toggle-copy"><span>Selected-star coordinates</span><small>Altitude, right ascension, declination</small></span><input type="checkbox" checked={showCoordinates} onChange={(event) => setShowCoordinates(event.target.checked)} /><span className="toggle-switch" aria-hidden="true" /></label>
+            <label className="toggle-row"><span className="toggle-copy"><span>Local sky references</span><small>Zenith, nadir, meridian</small></span><input type="checkbox" checked={showSphereReferences} onChange={(event) => setShowSphereReferences(event.target.checked)} /><span className="toggle-switch" aria-hidden="true" /></label>
           </section>
         </aside>
       </section>
