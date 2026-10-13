@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { equatorialToHorizontal, STARS } from './astronomy'
+import { equatorialToHorizontal, getCoordinatePaths, STARS } from './astronomy'
 
 const RADIUS = 3.2
 const EQUATOR_POINTS = 160
+const COORDINATE_NAMES = ['altitude', 'rightAscension', 'declination'] as const
+type CoordinateName = typeof COORDINATE_NAMES[number]
 
 interface SphereViewProps {
   date: Date
@@ -12,6 +14,7 @@ interface SphereViewProps {
   selectedStarId: string
   showGrid: boolean
   showConstellations: boolean
+  showCoordinates: boolean
   constellationPairs: string[][]
   resetToken: number
   onSelectStar: (id: string) => void
@@ -26,6 +29,8 @@ interface SphereScene {
   pole: THREE.Line
   grid: THREE.LineSegments
   constellations: THREE.LineSegments
+  coordinateArcs: Record<CoordinateName, THREE.Line>
+  coordinateAnchors: Record<CoordinateName, THREE.Vector3>
   animationFrame: number
 }
 
@@ -90,19 +95,37 @@ function makeEquator() {
   }))
 }
 
+function makeCoordinateArc(color: number, dashed = false) {
+  const material = dashed
+    ? new THREE.LineDashedMaterial({ color, dashSize: 0.09, gapSize: 0.045, transparent: true, opacity: 0.96, depthWrite: false })
+    : new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.96, depthWrite: false })
+  return new THREE.Line(new THREE.BufferGeometry(), material)
+}
+
+function updateCoordinateArc(line: THREE.Line, directions: { east: number; up: number; north: number }[]) {
+  line.geometry.dispose()
+  line.geometry = new THREE.BufferGeometry().setFromPoints(directions.map((direction) => (
+    new THREE.Vector3(direction.east, direction.up, direction.north).multiplyScalar(RADIUS * 1.02)
+  )))
+  if (line.material instanceof THREE.LineDashedMaterial) line.computeLineDistances()
+}
+
 export function SphereView({
   date,
   latitude,
   selectedStarId,
   showGrid,
   showConstellations,
+  showCoordinates,
   constellationPairs,
   resetToken,
   onSelectStar,
 }: SphereViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const coordinateLabelRefs = useRef<(HTMLSpanElement | null)[]>([])
   const sceneRef = useRef<SphereScene | null>(null)
   const selectRef = useRef(onSelectStar)
+  const showCoordinatesRef = useRef(showCoordinates)
 
   useEffect(() => { selectRef.current = onSelectStar }, [onSelectStar])
 
@@ -155,6 +178,13 @@ export function SphereView({
 
     const constellations = lineSegments([], 0xe3bb7b, 0.72)
     scene.add(constellations)
+
+    const coordinateArcs = {
+      altitude: makeCoordinateArc(0xf28e78),
+      rightAscension: makeCoordinateArc(0xf1c56f, true),
+      declination: makeCoordinateArc(0x79d7c5),
+    }
+    Object.values(coordinateArcs).forEach((arc) => scene.add(arc))
 
     const starMeshes = new Map<string, THREE.Mesh>()
     for (const star of STARS) {
@@ -213,11 +243,47 @@ export function SphereView({
     renderer.domElement.addEventListener('pointerdown', handlePointerDown)
     renderer.domElement.addEventListener('pointerup', handlePointerUp)
 
-    const elements: SphereScene = { renderer, controls, starMeshes, halo, equator, pole, grid, constellations, animationFrame: 0 }
+    const coordinateLabels = coordinateLabelRefs.current
+    const coordinateAnchors = {
+      altitude: new THREE.Vector3(),
+      rightAscension: new THREE.Vector3(),
+      declination: new THREE.Vector3(),
+    }
+    const elements: SphereScene = {
+      renderer, controls, starMeshes, halo, equator, pole, grid, constellations,
+      coordinateArcs, coordinateAnchors, animationFrame: 0,
+    }
     sceneRef.current = elements
     const draw = () => {
       controls.update()
       renderer.render(scene, camera)
+      for (let index = 0; index < COORDINATE_NAMES.length; index += 1) {
+        const label = coordinateLabels[index]
+        if (!label) continue
+        const coordinateName = COORDINATE_NAMES[index]
+        const arc = coordinateArcs[coordinateName]
+        const positionAttribute = arc.geometry.getAttribute('position')
+        if (!positionAttribute) {
+          label.style.visibility = 'hidden'
+          continue
+        }
+        let anchor = coordinateAnchors[coordinateName].clone().project(camera)
+        let nearestVisibleDistance = Number.POSITIVE_INFINITY
+        for (let pointIndex = 0; pointIndex < positionAttribute.count; pointIndex += 1) {
+          const candidate = new THREE.Vector3().fromBufferAttribute(positionAttribute, pointIndex).project(camera)
+          if (candidate.z < -1 || candidate.z > 1 || Math.abs(candidate.x) > 1 || Math.abs(candidate.y) > 1) continue
+          const distance = candidate.x ** 2 + candidate.y ** 2
+          if (distance < nearestVisibleDistance) {
+            anchor = candidate
+            nearestVisibleDistance = distance
+          }
+        }
+        const x = (anchor.x + 1) * container.clientWidth / 2
+        const y = (1 - anchor.y) * container.clientHeight / 2
+        label.style.visibility = showCoordinatesRef.current && nearestVisibleDistance < Number.POSITIVE_INFINITY ? 'visible' : 'hidden'
+        label.style.left = `${Math.max(4, Math.min(container.clientWidth - label.offsetWidth - 4, x + 8))}px`
+        label.style.top = `${Math.max(4, Math.min(container.clientHeight - label.offsetHeight - 4, y - label.offsetHeight / 2))}px`
+      }
       elements.animationFrame = window.requestAnimationFrame(draw)
     }
     draw()
@@ -242,6 +308,7 @@ export function SphereView({
   }, [])
 
   useEffect(() => {
+    showCoordinatesRef.current = showCoordinates
     const elements = sceneRef.current
     if (!elements) return
 
@@ -274,6 +341,17 @@ export function SphereView({
     elements.halo.position.copy(starPositions.get(selectedStarId) ?? new THREE.Vector3())
     elements.halo.lookAt(0, 0, 0)
     elements.grid.visible = showGrid
+    const selectedStar = STARS.find((star) => star.id === selectedStarId)
+    if (selectedStar) {
+      const paths = getCoordinatePaths(selectedStar.ra, selectedStar.dec, date, latitude)
+      for (const coordinateName of COORDINATE_NAMES) {
+        const directions = paths[coordinateName]
+        updateCoordinateArc(elements.coordinateArcs[coordinateName], directions)
+        const middle = directions[Math.floor(directions.length / 2)]
+        elements.coordinateAnchors[coordinateName].set(middle.east, middle.up, middle.north).multiplyScalar(RADIUS * 1.02)
+        elements.coordinateArcs[coordinateName].visible = showCoordinates
+      }
+    }
 
     const segments: number[] = []
     for (const [firstId, secondId] of constellationPairs) {
@@ -286,9 +364,28 @@ export function SphereView({
     elements.constellations.geometry.dispose()
     elements.constellations.geometry = geometry
     elements.constellations.visible = showConstellations
-  }, [date, latitude, selectedStarId, showGrid, showConstellations, constellationPairs])
+  }, [date, latitude, selectedStarId, showGrid, showConstellations, showCoordinates, constellationPairs])
 
   useEffect(() => { sceneRef.current?.controls.reset() }, [resetToken])
 
-  return <div ref={containerRef} className="sphere-canvas" role="img" aria-label="Interactive celestial sphere showing bright stars, horizon, altitude grid, celestial equator, and north celestial pole" />
+  const selectedStar = STARS.find((star) => star.id === selectedStarId) ?? STARS[0]
+  const selectedPosition = equatorialToHorizontal(selectedStar.ra, selectedStar.dec, date, latitude)
+  const coordinateLabels = [
+    `ALTITUDE ${Math.round(selectedPosition.altitude)}° · HORIZON`,
+    `RIGHT ASCENSION ${(selectedStar.ra / 15).toFixed(2)}h · VERNAL EQUINOX`,
+    `DECLINATION ${selectedStar.dec > 0 ? '+' : ''}${selectedStar.dec.toFixed(1)}° · CELESTIAL EQUATOR`,
+  ]
+
+  return (
+    <div ref={containerRef} className="sphere-canvas" role="img" aria-label="Interactive celestial sphere showing bright stars, horizon, altitude grid, celestial equator, and north celestial pole">
+      {coordinateLabels.map((label, index) => (
+        <span
+          key={COORDINATE_NAMES[index]}
+          ref={(element) => { coordinateLabelRefs.current[index] = element }}
+          className={`coordinate-callout coordinate-callout-${COORDINATE_NAMES[index]}`}
+          aria-hidden="true"
+        >{label}</span>
+      ))}
+    </div>
+  )
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { equatorialToHorizontal, getDailyBehavior, localSiderealDegrees, STARS } from './astronomy'
+import { equatorialToHorizontal, getCoordinatePaths, getDailyBehavior, localSiderealDegrees, STARS } from './astronomy'
 
 describe('celestial coordinate model', () => {
   it('provides an expanded catalog with unique IDs and valid coordinates', () => {
@@ -32,6 +32,23 @@ describe('celestial coordinate model', () => {
     expect(position.east).toBeLessThan(0)
     expect(position.azimuth).toBeGreaterThan(180)
     expect(position.altitude).toBeCloseTo(44.88, 1)
+  })
+
+  it('anchors selected-star coordinate paths to their correct references', () => {
+    const date = new Date('2026-10-07T21:00:00.000Z')
+    const star = STARS.find((candidate) => candidate.id === 'vega')!
+    const selected = equatorialToHorizontal(star.ra, star.dec, date, 40)
+    const equator = equatorialToHorizontal(star.ra, 0, date, 40)
+    const vernalEquinox = equatorialToHorizontal(0, 0, date, 40)
+    const paths = getCoordinatePaths(star.ra, star.dec, date, 40)
+    const end = (points: typeof paths.altitude) => points[points.length - 1]
+
+    expect(paths.altitude[0].up).toBeCloseTo(0, 8)
+    expect(end(paths.altitude).up).toBeCloseTo(selected.up, 8)
+    expect(paths.rightAscension[0].east).toBeCloseTo(vernalEquinox.east, 8)
+    expect(end(paths.rightAscension).east).toBeCloseTo(equator.east, 8)
+    expect(end(paths.declination).up).toBeCloseTo(selected.up, 8)
+    expect(paths.equatorCrossing.north).toBeCloseTo(equator.north, 8)
   })
 
   it('identifies stars that circle the pole or never rise', () => {

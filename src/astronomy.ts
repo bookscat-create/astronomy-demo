@@ -15,6 +15,20 @@ export interface HorizontalPosition {
   north: number
 }
 
+export interface SphereDirection {
+  east: number
+  up: number
+  north: number
+}
+
+export interface CoordinatePaths {
+  altitude: SphereDirection[]
+  rightAscension: SphereDirection[]
+  declination: SphereDirection[]
+  vernalEquinox: SphereDirection
+  equatorCrossing: SphereDirection
+}
+
 export type DailyBehavior = 'circumpolar' | 'rises-and-sets' | 'below-horizon'
 
 export const STARS: Star[] = [
@@ -111,6 +125,43 @@ export function equatorialToHorizontal(
     east,
     up,
     north,
+  }
+}
+
+export function getCoordinatePaths(
+  ra: number,
+  dec: number,
+  date: Date,
+  latitude: number,
+  samples = 48,
+): CoordinatePaths {
+  const selected = equatorialToHorizontal(ra, dec, date, latitude)
+  const equatorCrossing = equatorialToHorizontal(ra, 0, date, latitude)
+  const vernalEquinox = equatorialToHorizontal(0, 0, date, latitude)
+  const altitudeAzimuth = toRadians(selected.azimuth)
+  const altitude = Array.from({ length: samples + 1 }, (_, index) => {
+    const elevation = toRadians(selected.altitude * index / samples)
+    return {
+      east: Math.cos(elevation) * Math.sin(altitudeAzimuth),
+      up: Math.sin(elevation),
+      north: Math.cos(elevation) * Math.cos(altitudeAzimuth),
+    }
+  })
+  const rightAscension = Array.from({ length: samples + 1 }, (_, index) => {
+    const position = equatorialToHorizontal(ra * index / samples, 0, date, latitude)
+    return { east: position.east, up: position.up, north: position.north }
+  })
+  const declination = Array.from({ length: samples + 1 }, (_, index) => {
+    const position = equatorialToHorizontal(ra, dec * index / samples, date, latitude)
+    return { east: position.east, up: position.up, north: position.north }
+  })
+
+  return {
+    altitude,
+    rightAscension,
+    declination,
+    vernalEquinox: { east: vernalEquinox.east, up: vernalEquinox.up, north: vernalEquinox.north },
+    equatorCrossing: { east: equatorCrossing.east, up: equatorCrossing.up, north: equatorCrossing.north },
   }
 }
 
