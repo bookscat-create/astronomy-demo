@@ -219,7 +219,9 @@ export function SphereView({
   const containerRef = useRef<HTMLDivElement>(null)
   const coordinateLabelRefs = useRef<(HTMLSpanElement | null)[]>([])
   const sphereReferenceLabelRefs = useRef<(HTMLSpanElement | null)[]>([])
-  const poleLabelRef = useRef<HTMLSpanElement>(null)
+  const polePositionLabelRef = useRef<HTMLSpanElement>(null)
+  const equatorLabelRef = useRef<HTMLSpanElement>(null)
+  const circumpolarLabelRef = useRef<HTMLSpanElement>(null)
   const sceneRef = useRef<SphereScene | null>(null)
   const selectRef = useRef(onSelectStar)
   const showCoordinatesRef = useRef(showCoordinates)
@@ -322,7 +324,6 @@ export function SphereView({
       new THREE.PointsMaterial({ color: 0xa3c4bd, size: 0.025, transparent: true, opacity: 0.38, sizeAttenuation: true, depthWrite: false }),
     ))
 
-    const poleLabel = poleLabelRef.current
     const resize = () => {
       const { width, height } = container.getBoundingClientRect()
       if (!width || !height) return
@@ -352,6 +353,8 @@ export function SphereView({
 
     const coordinateLabels = coordinateLabelRefs.current
     const sphereReferenceLabels = sphereReferenceLabelRefs.current
+    const equatorLabel = equatorLabelRef.current
+    const circumpolarLabel = circumpolarLabelRef.current
     const coordinateAnchors = {
       altitude: new THREE.Vector3(),
       rightAscension: new THREE.Vector3(),
@@ -390,9 +393,15 @@ export function SphereView({
         }
         const x = (anchor.x + 1) * container.clientWidth / 2
         const y = (1 - anchor.y) * container.clientHeight / 2
+        const offsetMap = {
+          altitude: { x: 8, y: -10 },
+          rightAscension: { x: -18, y: -14 },
+          declination: { x: 16, y: 10 },
+        } as const
+        const offset = offsetMap[coordinateName]
         label.style.visibility = showCoordinatesRef.current && nearestVisibleDistance < Number.POSITIVE_INFINITY ? 'visible' : 'hidden'
-        label.style.left = `${Math.max(4, Math.min(container.clientWidth - label.offsetWidth - 4, x + 8))}px`
-        label.style.top = `${Math.max(4, Math.min(container.clientHeight - label.offsetHeight - 4, y - label.offsetHeight / 2))}px`
+        label.style.left = `${Math.max(4, Math.min(container.clientWidth - label.offsetWidth - 4, x + offset.x))}px`
+        label.style.top = `${Math.max(4, Math.min(container.clientHeight - label.offsetHeight - 4, y - label.offsetHeight / 2 + offset.y))}px`
       }
       for (let index = 0; index < SPHERE_REFERENCE_NAMES.length; index += 1) {
         const label = sphereReferenceLabels[index]
@@ -424,26 +433,66 @@ export function SphereView({
         label.style.visibility = showSphereReferencesRef.current && visible && anchor.z < 1 ? 'visible' : 'hidden'
         label.style.left = `${Math.max(4, Math.min(container.clientWidth - label.offsetWidth - 4, x + 8))}px`
         label.style.top = `${Math.max(4, Math.min(container.clientHeight - label.offsetHeight - 4, y - label.offsetHeight / 2))}px`
-        }
-      if (poleLabel) {
-        const currentLatitude = latitudeRef.current
-        const polePosition = new THREE.Vector3(
-          0,
-          Math.sin(THREE.MathUtils.degToRad(currentLatitude)) * RADIUS * 1.018,
-          Math.cos(THREE.MathUtils.degToRad(currentLatitude)) * RADIUS * 1.018,
-        ).project(camera)
-        const width = container.clientWidth
-        const height = container.clientHeight
-        const labelWidth = poleLabel.offsetWidth
-        const labelHeight = poleLabel.offsetHeight
-        const poleX = (polePosition.x + 1) * width / 2
-        const poleY = (1 - polePosition.y) * height / 2
-        const labelX = poleX + labelWidth + 12 < width ? poleX + 12 : poleX - labelWidth - 12
-        const labelY = Math.max(4, Math.min(height - labelHeight - 4, poleY - labelHeight / 2))
-        poleLabel.style.visibility = polePosition.z < 1 ? 'visible' : 'hidden'
-        poleLabel.style.left = `${labelX}px`
-        poleLabel.style.top = `${labelY}px`
       }
+
+      const findVisibleAnchor = (attribute: THREE.BufferAttribute | undefined) => {
+        if (!attribute) return { anchor: new THREE.Vector3(), visible: false }
+        let anchor = new THREE.Vector3()
+        let nearestVisibleDistance = Number.POSITIVE_INFINITY
+        for (let pointIndex = 0; pointIndex < attribute.count; pointIndex += 1) {
+          const candidate = new THREE.Vector3().fromBufferAttribute(attribute, pointIndex).project(camera)
+          if (candidate.z < -1 || candidate.z > 1 || Math.abs(candidate.x) > 1 || Math.abs(candidate.y) > 1) continue
+          const distance = candidate.x ** 2 + candidate.y ** 2
+          if (distance < nearestVisibleDistance) {
+            anchor = candidate
+            nearestVisibleDistance = distance
+          }
+        }
+        return { anchor, visible: nearestVisibleDistance < Number.POSITIVE_INFINITY }
+      }
+
+      const placeLabel = (label: HTMLSpanElement | null, point: THREE.Vector3, visible: boolean) => {
+        if (!label) return
+        const x = (point.x + 1) * container.clientWidth / 2
+        const y = (1 - point.y) * container.clientHeight / 2
+        label.style.left = `${Math.max(4, Math.min(container.clientWidth - label.offsetWidth - 4, x + 12))}px`
+        label.style.top = `${Math.max(4, Math.min(container.clientHeight - label.offsetHeight - 4, y - label.offsetHeight / 2))}px`
+        label.style.visibility = visible ? 'visible' : 'hidden'
+      }
+
+      const poleLabel = polePositionLabelRef.current
+      if (poleLabel) {
+        const polePosition = elements.pole.geometry.getAttribute('position') as THREE.BufferAttribute
+        const polePoint = new THREE.Vector3().fromBufferAttribute(polePosition, 1)
+        const facingCamera = polePoint.dot(camera.position) > 0
+        const projectedPole = polePoint.project(camera)
+        const inView = projectedPole.z >= -1 && projectedPole.z <= 1
+          && Math.abs(projectedPole.x) <= 1 && Math.abs(projectedPole.y) <= 1
+        placeLabel(poleLabel, projectedPole, facingCamera && inView)
+      }
+
+      const horizonLabelNode = document.querySelector('.sphere-reference-label-horizon') as HTMLSpanElement | null
+      if (horizonLabelNode) {
+        const horizonPoint = new THREE.Vector3(RADIUS * 0.72, 0, RADIUS * 0.96).project(camera)
+        placeLabel(horizonLabelNode, horizonPoint, true)
+      }
+
+      if (equatorLabel) {
+        const equatorAttribute = elements.equator.geometry.getAttribute('position') as THREE.BufferAttribute | undefined
+        const { anchor: equatorPoint, visible: equatorVisible } = findVisibleAnchor(equatorAttribute)
+        placeLabel(equatorLabel, equatorPoint, equatorVisible)
+      }
+
+      if (circumpolarLabel) {
+        if (latitudeRef.current === 0) {
+          circumpolarLabel.style.visibility = 'hidden'
+        } else {
+          const boundaryAttribute = elements.circumpolarBoundary.geometry.getAttribute('position') as THREE.BufferAttribute
+          const { anchor: circumpolarPoint, visible: circumpolarVisible } = findVisibleAnchor(boundaryAttribute)
+          placeLabel(circumpolarLabel, circumpolarPoint, circumpolarVisible)
+        }
+      }
+
       elements.animationFrame = window.requestAnimationFrame(draw)
     }
     draw()
@@ -540,10 +589,17 @@ export function SphereView({
     `RIGHT ASCENSION ${(selectedStar.ra / 15).toFixed(2)}h · VERNAL EQUINOX`,
     `DECLINATION ${selectedStar.dec > 0 ? '+' : ''}${selectedStar.dec.toFixed(1)}° · CELESTIAL EQUATOR`,
   ]
+  const poleAltitudeLabel = latitude === 0
+    ? 'FIXED ON HORIZON'
+    : `FIXED ${Math.abs(latitude)}° ${latitude > 0 ? 'ABOVE' : 'BELOW'} HORIZON`
   const circumpolarPole = latitude === 0 ? 'no circumpolar region at the equator' : `${latitude > 0 ? 'north' : 'south'} circumpolar sky region highlighted`
 
   return (
     <div ref={containerRef} className="sphere-canvas" role="img" aria-label={`Interactive celestial sphere showing bright stars, horizon, altitude grid, celestial equator, and ${circumpolarPole}`}>
+      <span ref={polePositionLabelRef} className="pole-position-label" aria-hidden="true">
+        <span>NORTH CELESTIAL POLE</span>
+        <b>{poleAltitudeLabel}</b>
+      </span>
       {coordinateLabels.map((label, index) => (
         <span
           key={COORDINATE_NAMES[index]}
@@ -560,10 +616,9 @@ export function SphereView({
           aria-hidden="true"
         >{referenceName === 'meridian' ? 'LOCAL MERIDIAN' : referenceName.toUpperCase()}</span>
       ))}
-      <span ref={poleLabelRef} className="pole-position-label" aria-hidden="true">
-        <span>NORTH CELESTIAL POLE</span>
-        <b>{latitude === 0 ? 'FIXED · ON HORIZON' : `FIXED · ${Math.abs(latitude)}° ${latitude > 0 ? 'ABOVE' : 'BELOW'} HORIZON`}</b>
-      </span>
+      <span className="sphere-reference-label sphere-reference-label-horizon" aria-hidden="true">HORIZON</span>
+      <span ref={equatorLabelRef} className="dynamic-sphere-label dynamic-sphere-label-equator" aria-hidden="true">CELESTIAL EQUATOR</span>
+      <span ref={circumpolarLabelRef} className="dynamic-sphere-label dynamic-sphere-label-circumpolar" aria-hidden="true">CIRCUMPOLAR ZONE</span>
     </div>
   )
 }
